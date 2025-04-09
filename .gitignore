@@ -1,0 +1,10 @@
+__pycache__
+*.ipynb
+.ipynb_checkpoints
+.vscode*
+.virtual_documents
+.DS_Store
+*.log
+*logs/
+.env
+data/
