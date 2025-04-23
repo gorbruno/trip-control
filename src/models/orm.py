@@ -2,7 +2,9 @@ from sqlalchemy import (
     Column, Integer, Float, String, Date, ForeignKey, UniqueConstraint
 )
 from sqlalchemy.orm import relationship, DeclarativeBase
+from sqlalchemy.sql import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from typing import Optional
 
 # 1. Make calls for async attrs possible with AsyncAttrs
 # 2. Base class override with DTO-like init
@@ -47,14 +49,14 @@ class DayORM(Base):
     tasks = relationship("TaskORM", back_populates="day", cascade="all, delete-orphan")
 
     @property
-    def mileage(self) -> int:
+    def mileage(self) -> ColumnElement[int] | None:
         if self.odometer_start is not None and self.odometer_end is not None:
             return self.odometer_end - self.odometer_start 
         return None
 
     @property
-    def consumption(self) -> float:  # Fuel consumption
-        if self.mileage:
+    def consumption(self) -> Optional[ColumnElement]:  # Fuel consumption
+        if self.mileage is not None:
             return self.mileage * 19.35 / 100
         return None
 
@@ -99,13 +101,13 @@ class LocationORM(Base):
     @property
     def address(self) -> str:
         parts = [
-            self.name or "",
-            f"({self.comment_name})" if self.comment_name else "",
-            f"{', ' if self.name else ''}{self.additional_name}, " if self.additional_name else "",
-            f"{', ' if self.name and not self.additional_name else ''}{self.street}",
-            f", {self.housenum}",
-            f" - {self.additional_address}" if self.additional_address else "",
-            f" ({self.comment_address})" if self.comment_address else ""
+            getattr(self, "name", ""),
+            f"({self.comment_name})" if getattr(self, "comment_name", None) else "",
+            f"{', ' if getattr(self, 'name', None) else ''}{getattr(self, 'additional_name', '')}, " if getattr(self, "additional_name", None) else "",
+            f"{', ' if getattr(self, 'name', None) and not getattr(self, 'additional_name', None) else ''}{getattr(self, 'street', '')}",
+            f", {getattr(self, 'housenum', '')}",
+            f" - {getattr(self, 'additional_address', '')}" if getattr(self, "additional_address", None) else "",
+            f" ({getattr(self, 'comment_address', '')})" if getattr(self, "comment_address", None) else ""
         ]
         return ''.join(parts).strip()
 
