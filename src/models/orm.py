@@ -4,7 +4,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, DeclarativeBase
 from sqlalchemy.sql import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.ext.hybrid import hybrid_property
 from typing import Optional
+from geoalchemy2 import Geometry
 
 # 1. Make calls for async attrs possible with AsyncAttrs
 # 2. Base class override with DTO-like init
@@ -48,13 +50,14 @@ class DayORM(Base):
     # Task links
     tasks = relationship("TaskORM", back_populates="day", cascade="all, delete-orphan")
 
-    @property
+    @hybrid_property
     def mileage(self) -> ColumnElement[int] | None:
         if self.odometer_start is not None and self.odometer_end is not None:
             return self.odometer_end - self.odometer_start 
         return None
 
-    @property
+    # TODO: replace all properties with real columns or add expressions for sql search
+    @hybrid_property
     def consumption(self) -> Optional[ColumnElement]:  # Fuel consumption
         if self.mileage is not None:
             return self.mileage * 19.35 / 100
@@ -66,8 +69,15 @@ class CoordinateORM(Base):
     id = Column(Integer, primary_key=True)
     lat = Column(Float, nullable=False)
     lon = Column(Float, nullable=False)
+    geom = Column(Geometry(geometry_type="POINT", srid=4326), nullable=False)
+    
+    # TODO: add reusing of existing coordinates
+    #__table_args__ = (UniqueConstraint('lat', 'lon', name='unique_coordinates'),)
 
-    __table_args__ = (UniqueConstraint('lat', 'lon', name='unique_coordinates'),)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if 'geom' not in kwargs and self.lat is not None and self.lon is not None:
+            self.geom = f'POINT({self.lon} {self.lat})'
 
     def __repr__(self):
         return f"<Coordinates(id={self.id}, lat={self.lat}, lon={self.lon})>"
@@ -82,6 +92,7 @@ class LocationORM(Base):
     comment_name = Column(String, nullable=True)
     street = Column(String, nullable=False)
     housenum = Column(String, nullable=False)
+    address = Column(String, nullable=False, unique=True)
     additional_address = Column(String, nullable=True)
     comment_address = Column(String, nullable=True)
     country = Column(String, nullable=False)
@@ -98,18 +109,22 @@ class LocationORM(Base):
     coords_id = Column(Integer, ForeignKey('coordinates.id'))
     coords = relationship('CoordinateORM', backref='locations')
 
-    @property
-    def address(self) -> str:
+    @staticmethod
+    def _generate_address(target) -> str:
         parts = [
-            getattr(self, "name", ""),
-            f"({self.comment_name})" if getattr(self, "comment_name", None) else "",
-            f"{', ' if getattr(self, 'name', None) else ''}{getattr(self, 'additional_name', '')}, " if getattr(self, "additional_name", None) else "",
-            f"{', ' if getattr(self, 'name', None) and not getattr(self, 'additional_name', None) else ''}{getattr(self, 'street', '')}",
-            f", {getattr(self, 'housenum', '')}",
-            f" - {getattr(self, 'additional_address', '')}" if getattr(self, "additional_address", None) else "",
-            f" ({getattr(self, 'comment_address', '')})" if getattr(self, "comment_address", None) else ""
+            target.name or "",
+            f"({target.comment_name})" if target.comment_name else "",
+            f", {target.additional_name}" if target.additional_name else "",
+            f", {target.street}" if target.street else "",
+            f" {target.housenum}" if target.housenum else "",
+            f" - {target.additional_address}" if target.additional_address else "",
+            f" ({target.comment_address})" if target.comment_address else "",
         ]
         return ''.join(parts).strip()
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.address = self._generate_address(self)
 
     def __repr__(self):
         return f"<Location(id={self.id}, name={self.name}, address={self.address}, coords={self.coords})>"
