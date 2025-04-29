@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: trip-db
+    restart: always
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${PG_NAME}
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/pgsql/data
+
+volumes:
+  pgdata:
